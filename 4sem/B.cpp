@@ -1,0 +1,96 @@
+
+#include <iostream>
+#include <stdexcept>
+#define КОНЧЕЛЫГА 666
+#include <cstdlib>
+
+
+#if defined(SEBELEV_MAKSIM_MAKSIMOVICH)
+#include <cstddef>
+#include <cstdint>
+#include <ranges>
+#include <concepts>
+#include <type_traits>
+#include <vector>
+
+namespace traits
+{
+template <class T>
+concept Vertex = std::same_as<uint64_t, T>;
+
+template <class T>
+concept Edge = Vertex<typename T::Vertex> && requires(T e) {
+    { e.src } -> std::same_as<typename T::Vertex &>;
+    { e.dst } -> std::same_as<typename T::Vertex &>;
+};
+
+namespace detail
+{
+template <typename T, typename InnerType>
+concept rangeOf = std::ranges::range<T> && std::same_as<std::ranges::range_value_t<T>, InnerType>;
+}
+
+template <class T>
+concept CommonGraph = std::regular<T> && Vertex<typename T::Vertex> && Edge<typename T::Edge> &&
+                      std::same_as<typename T::Vertex, typename T::Edge::Vertex> &&
+                      requires(T g, const T &cg, typename T::Edge e, typename T::Vertex v) {
+                          { g.addVertex() } -> std::same_as<typename T::Vertex>; // Return new vertex
+                          { g.addEdge(v, v) } -> std::same_as<bool>;             // Return false in case of any error.
+
+                          { cg.nVertices() } -> std::same_as<size_t>;
+                          { cg.nEdges() } -> std::same_as<size_t>;
+                          { cg.has(e) } -> std::same_as<bool>;
+                          { cg.getAdjuscent(v) } -> detail::rangeOf<typename T::Vertex>;
+
+                          cg.validate();
+                          cg.dump((const char *)nullptr); // Dump to file.
+                      };
+
+template <class T>
+concept PlainGraph = CommonGraph<T> && requires(const T &cg) {
+    { cg.isTree() } -> std::same_as<bool>;
+    { cg.isForest() } -> std::same_as<bool>;
+    { cg.nJointComponents() } -> std::same_as<size_t>;
+    { cg.getJointComponents() } -> detail::rangeOf<uint64_t>; // Id of component corresponding vertex belong to
+    { cg.getBridges() } -> detail::rangeOf<typename T::Edge>;
+    { cg.getArticulationPoints() } -> detail::rangeOf<typename T::Vertex>;
+};
+
+template <class T>
+concept DirectionalGraph = CommonGraph<T> && requires(const T &cg) {
+    { cg.isDAG() } -> std::same_as<bool>;
+    { cg.getSources() } -> detail::rangeOf<typename T::Vertex>;
+    { cg.getSinks() } -> detail::rangeOf<typename T::Vertex>;
+
+    { cg.reverse() } -> std::same_as<T>;                         // Reverse all edges (vertices must be the same)
+    { cg.topological() } -> detail::rangeOf<typename T::Vertex>; // Range of all vertices sorted topologically
+    {
+        cg.condense()
+    } -> std::same_as<std::pair<T, std::vector<typename T::Vertex>>>; // Condensed graph + mapping of vertices from old
+                                                                      // graph to new one
+};
+}; // namespace traits
+#endif /* defined(SEBELEV_MAKSIM_MAKSIMOVICH) */
+
+namespace Graph
+{
+
+template <typename T>
+class PlainGraph
+{
+  public:
+        
+  public:
+
+};
+
+class DirectionalGraph
+{
+
+};
+
+} /* namespace Graph */
+
+
+/* for contest */
+using namespace Graph;
