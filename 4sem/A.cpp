@@ -8,12 +8,9 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
-#define лолкек 666
 #include <string_view>
-#include <sys/types.h>
 #include <type_traits>
 #include <vector>
-#include <array>
 #include <limits>
 
 //------------------------------------------------------------------------------------------------------------
@@ -78,18 +75,18 @@ class Dealer
     have operator[] to get words, method size()
 */
 
-class Dictionary : private std::vector<std::string>
+class Dictionary : public std::vector<std::string>
 {
-  public:
-    using std::vector<std::string>::operator[];
-    using std::vector<std::string>::begin;
-    using std::vector<std::string>::end;
-    using std::vector<std::string>::size;
+//   public:
+//     using std::vector<std::string>::operator[];
+//     using std::vector<std::string>::begin;
+//     using std::vector<std::string>::end;
+//     using std::vector<std::string>::size;
   public:
     /* implicit */ Dictionary(size_t n_words, Dealer &dealer) : std::vector<std::string>(n_words)
     {
         for (size_t it = 0; it < n_words; ++it)
-            dealer >> (*this)[it];        
+            dealer >> (*this)[it];
     }
 };
 
@@ -143,6 +140,7 @@ class Gamer
 {
   private:
     static constexpr size_t english_alphabet_size = 26;
+
   private:
     /* status of letter in guessed word */
     enum LetterStatus : char
@@ -152,56 +150,38 @@ class Gamer
         CORRECT = '#'
     };
 
+  private:
+
+
+  private:
     /* imlp word representation */
-    struct Word
-    {
-        std::vector<char> letters_;
-
-        Word() = default;
-
-        Word(size_t length) : letters_(length, ' ') {}
-        Word(std::string_view s) : letters_(s.begin(), s.end()) {}
-        size_t size() const { return letters_.size(); }
-
-        char& operator[](size_t i) { return letters_[i]; }
-        const char& operator[](size_t i) const { return letters_[i]; }
-
-        bool operator==(const Word& rhs) const
-        {
-            if (unlikely(size() != rhs.size())) return false;
-
-            for (size_t it = 0, ite = size(); it < ite; ++it)
-                if (letters_[it] != rhs.letters_[it]) return false;
-
-            return true;
-        }
-
-        bool operator!=(const Word& rhs) const { return !(*this == rhs); }
-
-        std::string to_string() const
-        { return std::string(letters_.begin(), letters_.end()); }
-    };
+    using Word = std::string;
 
     /* estimation result */
-    struct WordHint
+    struct WordHint : public std::vector<LetterStatus>
     {
-        std::vector<LetterStatus> result_;
-
-        WordHint() = default;
-
-        WordHint(size_t length) : result_(length, NO) {}
-
-        size_t size() const { return result_.size(); }
-
-        LetterStatus& operator[](size_t i) { return result_[i]; }
-        const LetterStatus& operator[](size_t i) const { return result_[i]; }
-
-        bool is_correct() const
+      private:
+        /* char to letter status */
+        LetterStatus char_to_status(char c) const
         {
-            for (auto status : result_)
-                if (likely(status != CORRECT)) return false;
+            switch (c)
+            {
+                case '-': return NO;
+                case '?': return WRONG_POSITION;
+                case '#': return CORRECT;
+                default: throw std::runtime_error("Invalid letter status (dealer bug): '"+std::string(1, c)+"'");
+            }
+            __builtin_unreachable();
+        }
 
-            return true;
+      public:
+        
+        WordHint(size_t size) : std::vector<LetterStatus>(size, NO) {}
+
+        WordHint(std::string_view answer) : std::vector<LetterStatus>(answer.size())
+        {
+            for (size_t it = 0, ite = answer.size(); it < ite; ++it)
+                (*this)[it] = char_to_status(answer[it]);
         }
     };
 
@@ -241,59 +221,36 @@ class Gamer
     /* our requests history */
     std::vector<Word> requests_history_;
 
-    /* dealer answer on our requests history */
-    std::vector<WordHint> answers_history_;
-
-  private:
-    /* char to letter status */
-    LetterStatus char_to_status(char c) const
-    {
-        switch (c)
-        {
-            case '-': return NO;
-            case '?': return WRONG_POSITION;
-            case '#': return CORRECT;
-            default: throw std::runtime_error("Invalid letter status (dealer bug): '"+std::string(1, c)+"'");
-        }
-        __builtin_unreachable();
-    }
-
-    /* translate dealer answer in impl representation */
-    WordHint parse_answer(std::string_view answer) const
-    {
-        WordHint result_(params_.words_size);
-        for (size_t i = 0; i < params_.words_size; ++i)
-            result_[i] = char_to_status(answer[i]);
-        return result_;
-    }
+    /* save best_word_for_begin_ for all rounds */
+    Word best_word_for_begin_;
 
     WordHint evaluate_guess(const Word& guess, const Word& actual) const
     {
-        WordHint result_(params_.words_size);
+        WordHint result(params_.words_size);
         Word actual_copy = actual;
 
         /* exact matches */
         for (size_t i = 0; i < params_.words_size; ++i)
         {
             if (guess[i] != actual_copy[i]) continue;
-            result_[i] = CORRECT;
+            result[i] = CORRECT;
             actual_copy[i] = 0; /* mark as used */
         }
 
         /* existing but  */
         for (size_t i = 0; i < params_.words_size; ++i)
         {
-            if (result_[i] == CORRECT) continue;
+            if (result[i] == CORRECT) continue;
             for (size_t j = 0; j < params_.words_size; ++j)
             {
                 if (guess[i] != actual_copy[j]) continue;
-                result_[i] = WRONG_POSITION;
+                result[i] = WRONG_POSITION;
                 actual_copy[j] = 0; /* mark as used */
                 break;
             }
         }
 
-        return result_;
+        return result;
     }
 
     bool is_word_possible(const WordHint& hint, const Word& guess, Word word) const
@@ -310,6 +267,7 @@ class Gamer
         for (size_t i = 0; i < params_.words_size; ++i)
         {
             if (hint[i] != WRONG_POSITION) continue;
+
             if (guess[i] == word[i]) return false;
 
             bool found = false;
@@ -345,8 +303,10 @@ class Gamer
         size_t count = 0;
         for (size_t it = 0, ite = params_.dictionary.size(); it < ite; ++it)
         {
-            if (!possible_words_[it]) continue;
-            if (!is_word_possible(hint, guess, all_words_[it])) continue;
+            if ((not possible_words_[it]) or
+                (not is_word_possible(hint, guess, all_words_[it]))
+            ) continue;
+
             ++count;
         }
 
@@ -442,10 +402,15 @@ class Gamer
     }
     
     /* select first word with max unique lettetrs quantity */
-    Word get_first_guess() const
+    Word get_first_guess()
     {
         if (unlikely(all_words_.empty()))
             throw std::runtime_error("Given no words.");
+
+        static bool first_call = true;
+
+        if (likely(not first_call))
+            return best_word_for_begin_;
 
         Word best_word = all_words_[0];
         size_t best_unique = 0;
@@ -455,22 +420,28 @@ class Gamer
             std::bitset<english_alphabet_size> seen(false);
             size_t unique_letters = 0;
 
-            for (auto&& c : word.letters_)
+            for (auto&& letter : word)
             {
-                size_t i = static_cast<size_t>(c - 'a');
+                size_t i = static_cast<size_t>(letter - 'a');
                 if (seen[i]) continue;
 
                 seen[i] = true;
                 ++unique_letters;
             }
-
+#           define лолкек 666
             if (unique_letters <= best_unique) continue;
 
             best_unique = unique_letters;
             best_word = word;
 
+            /* we cannot improve this result */
             if (best_unique == params_.words_size) break;
         }
+
+        if (unlikely(first_call))
+            best_word_for_begin_ = best_word;
+
+        first_call = false;
 
         return best_word;
     }
@@ -491,37 +462,29 @@ class Gamer
     {
         Word guess;
 
-        if (unlikely(requests_history_.empty())) /* first attempt, using random word from dictionary */
+        if (unlikely(requests_history_.empty())) /* first attempt */
             guess = get_first_guess();
         else
             guess = select_best_guess_minmax(); /* select best word from point of view Min/Max strategy */        
 
-        requests_history_.push_back(guess);
+        requests_history_.emplace_back(std::move(guess));
 
-        /* to return a string_view we need to save guess somewhere. why not static variable? */
-        static std::string last_guess_str;
-        last_guess_str = guess.to_string();
-
-        return last_guess_str;
+        return requests_history_.back();
     }
 
     /* IGamer interface function */
     void become_answer(std::string_view answer)
     {
-        WordHint hint = parse_answer(answer);
-        answers_history_.emplace_back(hint);
-
+        WordHint hint{answer};
         /* filter words by last attempt result */
-        if (requests_history_.empty()) return;
         filter_possible_words(requests_history_.back(), hint);
+        /* can use .back(), because was at least 1 request if we become answer */
     }
 
     /* IGamer interface function */
     void ready_for_next_round()
     {
         requests_history_.clear();
-        answers_history_.clear();
-
         /* all words are possible in the begin */
         possible_words_.assign(params_.dictionary.size(), true);
     }
