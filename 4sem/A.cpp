@@ -209,35 +209,31 @@ class Gamer
     };
 
   private:
-    /* reference on game parametrs */
+    /* reference on game parametrs :) */
     const GameParams &params_;
 
-    /* all dictionary words in impt represenatation */
-    std::vector<Word> all_words_;
-    
     /* suitable words on every step */
     std::vector<bool> possible_words_;  /* not a bitser, `cause we will know size only in runtine */
 
-    /* our requests history */
-    std::vector<Word> requests_history_;
-
     /* save best_word_for_begin_ for all rounds */
     Word best_word_for_begin_;
+    Word last_guess_;
 
     WordHint evaluate_guess(const Word& guess, const Word& actual) const
     {
         WordHint result(params_.words_size);
         Word actual_copy = actual;
 
+        constexpr char used = 0;
+
         /* exact matches */
         for (size_t i = 0; i < params_.words_size; ++i)
         {
             if (guess[i] != actual_copy[i]) continue;
             result[i] = CORRECT;
-            actual_copy[i] = 0; /* mark as used */
+            actual_copy[i] = used; /* mark as used */
         }
 
-        /* existing but  */
         for (size_t i = 0; i < params_.words_size; ++i)
         {
             if (result[i] == CORRECT) continue;
@@ -245,7 +241,7 @@ class Gamer
             {
                 if (guess[i] != actual_copy[j]) continue;
                 result[i] = WRONG_POSITION;
-                actual_copy[j] = 0; /* mark as used */
+                actual_copy[j] = used; /* mark as used */
                 break;
             }
         }
@@ -304,7 +300,7 @@ class Gamer
         for (size_t it = 0, ite = params_.dictionary.size(); it < ite; ++it)
         {
             if ((not possible_words_[it]) or
-                (not is_word_possible(hint, guess, all_words_[it]))
+                (not is_word_possible(hint, guess, params_.dictionary[it]))
             ) continue;
 
             ++count;
@@ -318,7 +314,7 @@ class Gamer
         for (size_t it = 0, ite = params_.dictionary.size(); it < ite; ++it)
         {
             if (not possible_words_[it] or
-                is_word_possible(hint, guess, all_words_[it])
+                is_word_possible(hint, guess, params_.dictionary[it])
             ) continue;
 
             possible_words_[it] = false;
@@ -327,13 +323,14 @@ class Gamer
 
     std::vector<Word> get_possible_words() const
     {
-        std::vector<Word> result_;
+        std::vector<Word> result;
+    
         for (size_t it = 0, ite = params_.dictionary.size(); it < ite; ++it)
         {
             if (!possible_words_[it]) continue;
-            result_.emplace_back(all_words_[it]);
+            result.emplace_back(params_.dictionary[it]);
         }
-        return result_;
+        return result;
     }
 
     /* min/max strategy */
@@ -345,7 +342,7 @@ class Gamer
         if (unlikely(possible_words_list.size() == 1))
             return possible_words_list[0];
 
-        const auto& guesses = all_words_;
+        const auto& guesses = params_.dictionary;
 
         GuessRanking best_ranking;
         best_ranking.max_score_ = std::numeric_limits<decltype(best_ranking.max_score_)>::max();
@@ -404,18 +401,18 @@ class Gamer
     /* select first word with max unique lettetrs quantity */
     Word get_first_guess()
     {
-        if (unlikely(all_words_.empty()))
+        if (unlikely(params_.dictionary.empty()))
             throw std::runtime_error("Given no words.");
 
-        static bool first_call = true;
+        const bool first_call = last_guess_.empty();
 
         if (likely(not first_call))
             return best_word_for_begin_;
 
-        Word best_word = all_words_[0];
+        Word best_word = params_.dictionary[0];
         size_t best_unique = 0;
 
-        for (auto&& word: all_words_)
+        for (auto&& word: params_.dictionary)
         {
             std::bitset<english_alphabet_size> seen(false);
             size_t unique_letters = 0;
@@ -441,35 +438,24 @@ class Gamer
         if (unlikely(first_call))
             best_word_for_begin_ = best_word;
 
-        first_call = false;
-
         return best_word;
     }
 
   public:
     explicit Gamer(const GameParams &params) 
-        : params_(params)
+        : params_(params), possible_words_(params_.dictionary.size(), true)
     {
-        for (auto&& word: params_.dictionary)
-            all_words_.emplace_back(word);
-
-        /* all words are possible in the begin */
-        possible_words_.assign(params_.dictionary.size(), true);
     }
 
     /* IGamer interface function */
     std::string_view try_guess_word()
     {
-        Word guess;
-
-        if (unlikely(requests_history_.empty())) /* first attempt */
-            guess = get_first_guess();
+        if (unlikely(last_guess_.empty())) /* first attempt */
+            last_guess_ = get_first_guess();
         else
-            guess = select_best_guess_minmax(); /* select best word from point of view Min/Max strategy */        
+            last_guess_ = select_best_guess_minmax(); /* select best word from point of view Min/Max strategy */        
 
-        requests_history_.emplace_back(std::move(guess));
-
-        return requests_history_.back();
+        return last_guess_;
     }
 
     /* IGamer interface function */
@@ -477,14 +463,14 @@ class Gamer
     {
         WordHint hint{answer};
         /* filter words by last attempt result */
-        filter_possible_words(requests_history_.back(), hint);
+        filter_possible_words(last_guess_, hint);
         /* can use .back(), because was at least 1 request if we become answer */
     }
 
     /* IGamer interface function */
     void ready_for_next_round()
     {
-        requests_history_.clear();
+        last_guess_.clear();
         /* all words are possible in the begin */
         possible_words_.assign(params_.dictionary.size(), true);
     }
