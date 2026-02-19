@@ -6,7 +6,7 @@ echo
 
 if [ $# -eq 2 ];
 then
-    build/"$1" < tests/"$2"
+    "build/$1" < "tests/$2"
 else
-    build/"$1"
+    "build/$1"
 fi
